@@ -48,6 +48,7 @@
     </queries>
 
     <application
+        android:enableOnBackInvokedCallback="true"
         android:name="io.nekohasekai.sagernet.SagerNet"
         android:allowBackup="true"
         android:autoRevokePermissions="allowed"
