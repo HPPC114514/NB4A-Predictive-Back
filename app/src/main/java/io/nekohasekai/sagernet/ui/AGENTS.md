@@ -53,4 +53,6 @@ Do not remove or weaken confirmation prompts for profile editing, configuration 
 
 When modifying a screen in this package, note which UI state was considered. At minimum, distinguish between ordinary back, nested back, temporary UI back, and unsaved-state back.
 
-If a progress document exists, update the relevant screen status after changing predictive back behavior.
+If predictive back behavior is changed in this package, update `docs/predictive-back-handoff.md` and `docs/predictive-back-progress.md`.
+
+If either file does not exist, create it with a minimal useful structure instead of leaving the state only in the final response.
