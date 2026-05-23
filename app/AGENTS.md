@@ -51,3 +51,6 @@ Do not remove existing Activity attributes, exported flags, launch modes, permis
 Do not upgrade AndroidX, Kotlin, Gradle, AGP, Material, Fragment, Navigation, or AppCompat dependencies merely because a newer version exists.
 
 Dependency changes must be justified by the current task and kept separate from unrelated UI behavior changes where practical.
+
+
+Predictive back changes in this module must leave repository-tracked state in `docs/predictive-back-handoff.md` and `docs/predictive-back-progress.md`, so future agents can continue without repeating the same scan.
