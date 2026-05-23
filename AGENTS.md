@@ -41,7 +41,25 @@ Do not bypass FragmentManager, NavController, AppCompat, or existing lifecycle-a
 
 When changing predictive back behavior, update the project progress documentation if it exists. If a relevant progress file does not exist yet, keep the code change self-contained and mention what still needs to be recorded in the final summary or commit description.
 
-When introducing a version-specific workaround or a direct platform API, document why AndroidX was not enough.
+## Long-term project memory
+
+Predictive back work must use repository-tracked handoff and progress documents.
+
+Before changing predictive back behavior, read these files if they exist:
+
+- `docs/predictive-back-handoff.md`
+- `docs/predictive-back-progress.md`
+
+After changing predictive back behavior, create or update both files:
+
+- `docs/predictive-back-handoff.md`
+- `docs/predictive-back-progress.md`
+
+The handoff document records what the next agent needs to know before continuing. It should include the current phase, files changed, files inspected but not changed, technical direction, completed behavior, unresolved risks, build or verification result, and the next recommended task.
+
+The progress document records page-level or module-level status. It should include the area, file or screen, AndroidX back handling status, risk, next step, and last update.
+
+Do not rely only on the final chat summary for project memory. Important predictive back state must be written into repository files.
 
 ## Safety rules
 
