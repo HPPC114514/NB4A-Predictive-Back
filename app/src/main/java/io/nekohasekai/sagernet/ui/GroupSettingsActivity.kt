@@ -5,11 +5,14 @@ import android.app.Activity
 import android.content.DialogInterface
 import android.content.Intent
 import android.os.Bundle
+import android.os.Looper
 import android.os.Parcelable
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
 import android.widget.Toast
+import androidx.activity.OnBackPressedCallback
+import androidx.activity.addCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.LayoutRes
 import androidx.appcompat.app.AlertDialog
@@ -27,6 +30,7 @@ import io.nekohasekai.sagernet.ktx.Logs
 import io.nekohasekai.sagernet.ktx.applyDefaultValues
 import io.nekohasekai.sagernet.ktx.onMainDispatcher
 import io.nekohasekai.sagernet.ktx.runOnDefaultDispatcher
+import io.nekohasekai.sagernet.ktx.runOnMainDispatcher
 import io.nekohasekai.sagernet.widget.ListListener
 import io.nekohasekai.sagernet.widget.OutboundPreference
 import kotlinx.parcelize.Parcelize
@@ -40,6 +44,7 @@ class GroupSettingsActivity(
 
     private lateinit var frontProxyPreference: OutboundPreference
     private lateinit var landingProxyPreference: OutboundPreference
+    private lateinit var unsavedChangesBackCallback: OnBackPressedCallback
 
     fun ProxyGroup.init() {
         DataStore.groupName = name ?: ""
@@ -205,6 +210,9 @@ class GroupSettingsActivity(
             setDisplayHomeAsUpEnabled(true)
             setHomeAsUpIndicator(R.drawable.ic_navigation_close)
         }
+        unsavedChangesBackCallback = onBackPressedDispatcher.addCallback(this, false) {
+            showUnsavedChangesDialog()
+        }
 
         if (savedInstanceState == null) {
             val editingId = intent.getLongExtra(EXTRA_GROUP_ID, 0L)
@@ -228,7 +236,7 @@ class GroupSettingsActivity(
                         .replace(R.id.settings, MyPreferenceFragmentCompat())
                         .commit()
 
-                    DataStore.dirty = false
+                    clearDirty()
                     DataStore.profileCacheStore.registerChangeListener(this@GroupSettingsActivity)
                 }
             }
@@ -270,10 +278,32 @@ class GroupSettingsActivity(
 
     override fun onOptionsItemSelected(item: MenuItem) = child.onOptionsItemSelected(item)
 
-    override fun onBackPressed() {
-        if (needSave()) {
-            UnsavedChangesDialogFragment().apply { key() }.show(supportFragmentManager, null)
-        } else super.onBackPressed()
+    private fun showUnsavedChangesDialog() {
+        UnsavedChangesDialogFragment().apply { key() }.show(supportFragmentManager, null)
+    }
+
+    private fun markDirty() {
+        DataStore.dirty = true
+        updateUnsavedChangesBackCallback()
+    }
+
+    private fun clearDirty() {
+        DataStore.dirty = false
+        updateUnsavedChangesBackCallback()
+    }
+
+    private fun updateUnsavedChangesBackCallback() {
+        if (!::unsavedChangesBackCallback.isInitialized) return
+
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            unsavedChangesBackCallback.isEnabled = needSave()
+        } else {
+            runOnMainDispatcher {
+                if (::unsavedChangesBackCallback.isInitialized) {
+                    unsavedChangesBackCallback.isEnabled = needSave()
+                }
+            }
+        }
     }
 
     override fun onSupportNavigateUp(): Boolean {
@@ -288,7 +318,7 @@ class GroupSettingsActivity(
 
     override fun onPreferenceDataStoreChanged(store: PreferenceDataStore, key: String) {
         if (key != Key.PROFILE_DIRTY) {
-            DataStore.dirty = true
+            markDirty()
         }
     }
 

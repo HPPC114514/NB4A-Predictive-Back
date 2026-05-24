@@ -391,6 +391,11 @@ class AppManagerActivity : ThemedActivity() {
     override fun supportNavigateUpTo(upIntent: Intent) =
         super.supportNavigateUpTo(upIntent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP))
 
+    override fun onSupportNavigateUp(): Boolean {
+        if (!super.onSupportNavigateUp()) finish()
+        return true
+    }
+
     override fun onKeyUp(keyCode: Int, event: KeyEvent?) = if (keyCode == KeyEvent.KEYCODE_MENU) {
         if (binding.toolbar.isOverflowMenuShowing) binding.toolbar.hideOverflowMenu() else binding.toolbar.showOverflowMenu()
     } else super.onKeyUp(keyCode, event)

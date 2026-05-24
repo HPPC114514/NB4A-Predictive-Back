@@ -10,10 +10,14 @@ import android.os.Bundle
 import android.os.RemoteException
 import android.view.KeyEvent
 import android.view.MenuItem
+import android.view.View
+import androidx.activity.OnBackPressedCallback
 import androidx.activity.addCallback
 import androidx.annotation.IdRes
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.core.view.GravityCompat
+import androidx.drawerlayout.widget.DrawerLayout
 import androidx.preference.PreferenceDataStore
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.navigation.NavigationView
@@ -57,6 +61,8 @@ class MainActivity : ThemedActivity(),
 
     lateinit var binding: LayoutMainBinding
     lateinit var navigation: NavigationView
+    private lateinit var mainBackCallback: OnBackPressedCallback
+    private lateinit var drawerBackCallback: OnBackPressedCallback
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -78,13 +84,7 @@ class MainActivity : ThemedActivity(),
         if (savedInstanceState == null) {
             displayFragmentWithId(R.id.nav_configuration)
         }
-        onBackPressedDispatcher.addCallback {
-            if (supportFragmentManager.findFragmentById(R.id.fragment_holder) is ConfigurationFragment) {
-                moveTaskToBack(true)
-            } else {
-                displayFragmentWithId(R.id.nav_configuration)
-            }
-        }
+        registerBackCallbacks()
 
         binding.fab.setOnClickListener {
             if (DataStore.serviceState.canStop) SagerNet.stopService() else connect.launch(
@@ -123,6 +123,48 @@ class MainActivity : ThemedActivity(),
                 .setMessage(R.string.preview_version_hint)
                 .setPositiveButton(android.R.string.ok, null)
                 .show()
+        }
+    }
+
+    private fun registerBackCallbacks() {
+        mainBackCallback = onBackPressedDispatcher.addCallback(this) {
+            handleMainBackPressed()
+        }
+        drawerBackCallback = onBackPressedDispatcher.addCallback(this, false) {
+            binding.drawerLayout.closeDrawer(GravityCompat.START)
+            updateBackCallbacks()
+        }
+        binding.drawerLayout.addDrawerListener(object : DrawerLayout.SimpleDrawerListener() {
+            override fun onDrawerSlide(drawerView: View, slideOffset: Float) {
+                updateBackCallbacks()
+            }
+
+            override fun onDrawerOpened(drawerView: View) {
+                updateBackCallbacks()
+            }
+
+            override fun onDrawerClosed(drawerView: View) {
+                updateBackCallbacks()
+            }
+        })
+        updateBackCallbacks()
+    }
+
+    private fun updateBackCallbacks() {
+        val drawerVisible = binding.drawerLayout.isDrawerVisible(GravityCompat.START)
+        drawerBackCallback.isEnabled = drawerVisible
+        mainBackCallback.isEnabled = !drawerVisible
+    }
+
+    private fun handleMainBackPressed() {
+        val fragment =
+            supportFragmentManager.findFragmentById(R.id.fragment_holder) as? ToolbarFragment
+        if (fragment?.onBackPressed() == true) return
+
+        if (fragment is ConfigurationFragment) {
+            moveTaskToBack(true)
+        } else {
+            displayFragmentWithId(R.id.nav_configuration)
         }
     }
 

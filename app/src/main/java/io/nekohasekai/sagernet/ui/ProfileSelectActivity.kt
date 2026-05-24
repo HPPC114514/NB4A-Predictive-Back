@@ -2,6 +2,7 @@ package io.nekohasekai.sagernet.ui
 
 import android.content.Intent
 import android.os.Bundle
+import androidx.activity.addCallback
 import io.nekohasekai.sagernet.R
 import io.nekohasekai.sagernet.database.ProxyEntity
 
@@ -15,6 +16,9 @@ class ProfileSelectActivity : ThemedActivity(R.layout.layout_empty),
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        onBackPressedDispatcher.addCallback(this) {
+            finish()
+        }
 
         val selected = intent.getParcelableExtra<ProxyEntity>(EXTRA_SELECTED)
 

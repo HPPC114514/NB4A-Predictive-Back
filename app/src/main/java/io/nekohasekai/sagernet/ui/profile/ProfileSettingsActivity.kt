@@ -5,6 +5,7 @@ import android.content.DialogInterface
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
+import android.os.Looper
 import android.os.Parcelable
 import android.view.Menu
 import android.view.MenuItem
@@ -12,6 +13,8 @@ import android.view.View
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.Toast
+import androidx.activity.OnBackPressedCallback
+import androidx.activity.addCallback
 import androidx.activity.result.component1
 import androidx.activity.result.component2
 import androidx.activity.result.contract.ActivityResultContracts
@@ -89,6 +92,7 @@ abstract class ProfileSettingsActivity<T : AbstractBean>(
 
     val proxyEntity by lazy { SagerDatabase.proxyDao.getById(DataStore.editingId) }
     protected var isSubscription by Delegates.notNull<Boolean>()
+    private lateinit var unsavedChangesBackCallback: OnBackPressedCallback
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -97,6 +101,9 @@ abstract class ProfileSettingsActivity<T : AbstractBean>(
             setTitle(R.string.profile_config)
             setDisplayHomeAsUpEnabled(true)
             setHomeAsUpIndicator(R.drawable.ic_navigation_close)
+        }
+        unsavedChangesBackCallback = onBackPressedDispatcher.addCallback(this, false) {
+            showUnsavedChangesDialog()
         }
 
         if (savedInstanceState == null) {
@@ -174,9 +181,32 @@ abstract class ProfileSettingsActivity<T : AbstractBean>(
 
     override fun onOptionsItemSelected(item: MenuItem) = child.onOptionsItemSelected(item)
 
-    override fun onBackPressed() {
-        if (DataStore.dirty) UnsavedChangesDialogFragment().apply { key() }
-            .show(supportFragmentManager, null) else super.onBackPressed()
+    private fun showUnsavedChangesDialog() {
+        UnsavedChangesDialogFragment().apply { key() }.show(supportFragmentManager, null)
+    }
+
+    protected fun markProfileDirty() {
+        DataStore.dirty = true
+        updateUnsavedChangesBackCallback()
+    }
+
+    private fun clearProfileDirty() {
+        DataStore.dirty = false
+        updateUnsavedChangesBackCallback()
+    }
+
+    protected fun updateUnsavedChangesBackCallback() {
+        if (!::unsavedChangesBackCallback.isInitialized) return
+
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            unsavedChangesBackCallback.isEnabled = DataStore.dirty
+        } else {
+            runOnMainDispatcher {
+                if (::unsavedChangesBackCallback.isInitialized) {
+                    unsavedChangesBackCallback.isEnabled = DataStore.dirty
+                }
+            }
+        }
     }
 
     override fun onSupportNavigateUp(): Boolean {
@@ -191,7 +221,7 @@ abstract class ProfileSettingsActivity<T : AbstractBean>(
 
     override fun onPreferenceDataStoreChanged(store: PreferenceDataStore, key: String) {
         if (key != Key.PROFILE_DIRTY) {
-            DataStore.dirty = true
+            markProfileDirty()
         }
     }
 
@@ -234,7 +264,7 @@ abstract class ProfileSettingsActivity<T : AbstractBean>(
 
             activity?.apply {
                 viewCreated(view, savedInstanceState)
-                DataStore.dirty = false
+                clearProfileDirty()
                 DataStore.profileCacheStore.registerChangeListener(this)
             }
         }

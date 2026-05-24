@@ -10,6 +10,7 @@ import android.provider.MediaStore
 import android.view.Menu
 import android.view.MenuItem
 import android.widget.Toast
+import androidx.activity.addCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.getSystemService
 import androidx.core.net.toUri
@@ -46,6 +47,9 @@ class ScannerActivity : ThemedActivity(),
         supportActionBar?.apply {
             setDisplayHomeAsUpEnabled(true)
             setHomeAsUpIndicator(R.drawable.ic_navigation_close)
+        }
+        onBackPressedDispatcher.addCallback(this) {
+            finish()
         }
 
         // 二维码库
@@ -99,6 +103,11 @@ class ScannerActivity : ThemedActivity(),
         } else {
             super.onOptionsItemSelected(item)
         }
+    }
+
+    override fun onSupportNavigateUp(): Boolean {
+        finish()
+        return true
     }
 
     var finished = AtomicBoolean(false)

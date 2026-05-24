@@ -6,6 +6,7 @@ import android.text.format.DateFormat
 import android.view.Menu
 import android.view.MenuItem
 import android.view.ViewGroup
+import androidx.activity.addCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.view.isInvisible
 import androidx.recyclerview.widget.ItemTouchHelper
@@ -43,6 +44,9 @@ class AssetsActivity : ThemedActivity() {
             setTitle(R.string.route_assets)
             setDisplayHomeAsUpEnabled(true)
             setHomeAsUpIndicator(R.drawable.ic_navigation_close)
+        }
+        onBackPressedDispatcher.addCallback(this) {
+            finish()
         }
 
         binding.recyclerView.layoutManager = FixedLinearLayoutManager(binding.recyclerView)
@@ -335,10 +339,6 @@ class AssetsActivity : ThemedActivity() {
     override fun onSupportNavigateUp(): Boolean {
         finish()
         return true
-    }
-
-    override fun onBackPressed() {
-        finish()
     }
 
     override fun onResume() {

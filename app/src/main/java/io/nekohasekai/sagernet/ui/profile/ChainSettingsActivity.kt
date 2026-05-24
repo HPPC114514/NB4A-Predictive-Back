@@ -139,13 +139,13 @@ class ChainSettingsActivity : ProfileSettingsActivity<ChainBean>(R.layout.layout
             proxyList[to - 1] = proxyList[from - 1]
             proxyList[from - 1] = toMove
             notifyItemMoved(from, to)
-            DataStore.dirty = true
+            markProfileDirty()
         }
 
         fun remove(index: Int) {
             proxyList.removeAt(index - 1)
             notifyItemRemoved(index)
-            DataStore.dirty = true
+            markProfileDirty()
         }
 
         override fun getItemId(position: Int): Long {
@@ -208,7 +208,9 @@ class ChainSettingsActivity : ProfileSettingsActivity<ChainBean>(R.layout.layout
     val selectProfileForAdd =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { (resultCode, data) ->
             if (resultCode == Activity.RESULT_OK) runOnDefaultDispatcher {
-                DataStore.dirty = true
+                onMainDispatcher {
+                    markProfileDirty()
+                }
 
                 val profile = ProfileManager.getProfile(
                     data!!.getLongExtra(

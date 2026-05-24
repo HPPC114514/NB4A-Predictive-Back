@@ -34,7 +34,7 @@ class ConfigSettingActivity :
 
     override fun onPreferenceDataStoreChanged(store: PreferenceDataStore, key: String) {
         if (key != Key.PROFILE_DIRTY) {
-            DataStore.dirty = true
+            markProfileDirty()
         }
     }
 

@@ -4,11 +4,14 @@ import android.app.Activity
 import android.content.DialogInterface
 import android.content.Intent
 import android.os.Bundle
+import android.os.Looper
 import android.os.Parcelable
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
 import android.widget.Toast
+import androidx.activity.OnBackPressedCallback
+import androidx.activity.addCallback
 import androidx.activity.result.component1
 import androidx.activity.result.component2
 import androidx.activity.result.contract.ActivityResultContracts
@@ -34,6 +37,7 @@ import io.nekohasekai.sagernet.ktx.Logs
 import io.nekohasekai.sagernet.ktx.app
 import io.nekohasekai.sagernet.ktx.onMainDispatcher
 import io.nekohasekai.sagernet.ktx.runOnDefaultDispatcher
+import io.nekohasekai.sagernet.ktx.runOnMainDispatcher
 import io.nekohasekai.sagernet.utils.PackageCache
 import io.nekohasekai.sagernet.widget.AppListPreference
 import io.nekohasekai.sagernet.widget.ListListener
@@ -46,6 +50,8 @@ class RouteSettingsActivity(
     @LayoutRes resId: Int = R.layout.layout_settings_activity,
 ) : ThemedActivity(resId),
     OnPreferenceDataStoreChangeListener {
+
+    private lateinit var unsavedChangesBackCallback: OnBackPressedCallback
 
     fun init(packageName: String?) {
         RuleEntity().apply {
@@ -221,6 +227,9 @@ class RouteSettingsActivity(
             setDisplayHomeAsUpEnabled(true)
             setHomeAsUpIndicator(R.drawable.ic_navigation_close)
         }
+        unsavedChangesBackCallback = onBackPressedDispatcher.addCallback(this, false) {
+            showUnsavedChangesDialog()
+        }
 
         if (savedInstanceState == null) {
             val editingId = intent.getLongExtra(EXTRA_ROUTE_ID, 0L)
@@ -244,7 +253,7 @@ class RouteSettingsActivity(
                         .replace(R.id.settings, MyPreferenceFragmentCompat())
                         .commit()
 
-                    DataStore.dirty = false
+                    clearDirty()
                     DataStore.profileCacheStore.registerChangeListener(this@RouteSettingsActivity)
                 }
             }
@@ -294,10 +303,32 @@ class RouteSettingsActivity(
 
     override fun onOptionsItemSelected(item: MenuItem) = child.onOptionsItemSelected(item)
 
-    override fun onBackPressed() {
-        if (needSave()) {
-            UnsavedChangesDialogFragment().apply { key() }.show(supportFragmentManager, null)
-        } else super.onBackPressed()
+    private fun showUnsavedChangesDialog() {
+        UnsavedChangesDialogFragment().apply { key() }.show(supportFragmentManager, null)
+    }
+
+    private fun markDirty() {
+        DataStore.dirty = true
+        updateUnsavedChangesBackCallback()
+    }
+
+    private fun clearDirty() {
+        DataStore.dirty = false
+        updateUnsavedChangesBackCallback()
+    }
+
+    private fun updateUnsavedChangesBackCallback() {
+        if (!::unsavedChangesBackCallback.isInitialized) return
+
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            unsavedChangesBackCallback.isEnabled = needSave()
+        } else {
+            runOnMainDispatcher {
+                if (::unsavedChangesBackCallback.isInitialized) {
+                    unsavedChangesBackCallback.isEnabled = needSave()
+                }
+            }
+        }
     }
 
     override fun onSupportNavigateUp(): Boolean {
@@ -312,7 +343,7 @@ class RouteSettingsActivity(
 
     override fun onPreferenceDataStoreChanged(store: PreferenceDataStore, key: String) {
         if (key != Key.PROFILE_DIRTY) {
-            DataStore.dirty = true
+            markDirty()
         }
     }
 

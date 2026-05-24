@@ -130,6 +130,7 @@ class ConfigurationFragment @JvmOverloads constructor(
     lateinit var adapter: GroupPagerAdapter
     lateinit var tabLayout: TabLayout
     lateinit var groupPager: ViewPager2
+    private var searchView: SearchView? = null
 
     val alwaysShowAddress by lazy { DataStore.alwaysShowAddress }
 
@@ -186,14 +187,13 @@ class ConfigurationFragment @JvmOverloads constructor(
             }
         }
 
-        val searchView = toolbar.findViewById<SearchView>(R.id.action_search)
-        if (searchView != null) {
-            searchView.setOnQueryTextListener(this)
-            searchView.maxWidth = Int.MAX_VALUE
+        searchView = toolbar.findViewById<SearchView>(R.id.action_search)?.also {
+            it.setOnQueryTextListener(this)
+            it.maxWidth = Int.MAX_VALUE
 
-            searchView.setOnQueryTextFocusChangeListener { _, hasFocus ->
+            it.setOnQueryTextFocusChangeListener { _, hasFocus ->
                 if (!hasFocus) {
-                    cancelSearch(searchView)
+                    cancelSearch(it)
                 }
             }
         }
@@ -1737,6 +1737,19 @@ class ConfigurationFragment @JvmOverloads constructor(
     private fun cancelSearch(searchView: SearchView) {
         searchView.onActionViewCollapsed()
         searchView.clearFocus()
+    }
+
+    override fun onBackPressed(): Boolean {
+        val searchView = searchView ?: return false
+        if (searchView.isIconified && !searchView.hasFocus() && searchView.query.isEmpty()) return false
+
+        cancelSearch(searchView)
+        return true
+    }
+
+    override fun onDestroyView() {
+        searchView = null
+        super.onDestroyView()
     }
 
 }

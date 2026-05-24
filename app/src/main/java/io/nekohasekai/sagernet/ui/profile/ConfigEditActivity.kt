@@ -7,6 +7,8 @@ import android.view.Menu
 import android.view.MenuItem
 import android.view.ViewGroup.MarginLayoutParams
 import android.widget.LinearLayout
+import androidx.activity.OnBackPressedCallback
+import androidx.activity.addCallback
 import androidx.appcompat.app.AlertDialog
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
@@ -34,6 +36,8 @@ class ConfigEditActivity : ThemedActivity() {
     var dirty = false
     var key = Key.SERVER_CONFIG
     var useConfigStore = false
+
+    private lateinit var unsavedChangesBackCallback: OnBackPressedCallback
 
     class UnsavedChangesDialogFragment : AlertDialogFragment<Empty, Empty>() {
         override fun AlertDialog.Builder.prepare(listener: DialogInterface.OnClickListener) {
@@ -68,6 +72,9 @@ class ConfigEditActivity : ThemedActivity() {
             setDisplayHomeAsUpEnabled(true)
             setHomeAsUpIndicator(R.drawable.ic_navigation_close)
         }
+        unsavedChangesBackCallback = onBackPressedDispatcher.addCallback(this, false) {
+            showUnsavedChangesDialog()
+        }
 
         binding.editor.apply {
             language = JsonLanguage()
@@ -81,6 +88,7 @@ class ConfigEditActivity : ThemedActivity() {
                 if (!dirty) {
                     dirty = true
                     DataStore.dirty = true
+                    updateUnsavedChangesBackCallback()
                 }
             }
         }
@@ -165,9 +173,14 @@ class ConfigEditActivity : ThemedActivity() {
         }
     }
 
-    override fun onBackPressed() {
-        if (dirty) UnsavedChangesDialogFragment().apply { key() }
-            .show(supportFragmentManager, null) else super.onBackPressed()
+    private fun showUnsavedChangesDialog() {
+        UnsavedChangesDialogFragment().apply { key() }.show(supportFragmentManager, null)
+    }
+
+    private fun updateUnsavedChangesBackCallback() {
+        if (::unsavedChangesBackCallback.isInitialized) {
+            unsavedChangesBackCallback.isEnabled = dirty
+        }
     }
 
     override fun onSupportNavigateUp(): Boolean {

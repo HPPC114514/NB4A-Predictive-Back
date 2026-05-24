@@ -62,4 +62,9 @@ class StunActivity : ThemedActivity() {
         }
     }
 
+    override fun onSupportNavigateUp(): Boolean {
+        finish()
+        return true
+    }
+
 }

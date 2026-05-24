@@ -1,6 +1,7 @@
 package io.nekohasekai.sagernet.ui
 
 import android.os.Bundle
+import androidx.activity.addCallback
 import io.nekohasekai.sagernet.R
 import io.nekohasekai.sagernet.SagerNet
 import io.nekohasekai.sagernet.database.DataStore
@@ -14,6 +15,9 @@ class SwitchActivity : ThemedActivity(R.layout.layout_empty),
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        onBackPressedDispatcher.addCallback(this) {
+            finish()
+        }
 
         supportFragmentManager.beginTransaction()
             .replace(
