@@ -101,12 +101,20 @@ jobs:
             "build-tools;${ANDROID_BUILD_TOOLS}" \
             "ndk;${ANDROID_NDK_VERSION}"
 
+      - name: Compute LibCore cache key
+        id: libcore-key
+        run: |
+          {
+            find .github/workflows buildScript -type f -print
+            git ls-files libcore
+          } | sort | xargs sha256sum | sha256sum | awk '{ print "key=" $1 }' >> "$GITHUB_OUTPUT"
+
       - name: LibCore cache
         id: libcore-cache
         uses: actions/cache@v4
         with:
           path: app/libs/libcore.aar
-          key: libcore-${{ runner.os }}-${{ hashFiles('.github/workflows/*', 'buildScript/**', 'libcore/**') }}
+          key: libcore-${{ runner.os }}-${{ steps.libcore-key.outputs.key }}
 
       - name: Build LibCore
         if: steps.libcore-cache.outputs.cache-hit != 'true'
@@ -154,11 +162,20 @@ jobs:
           name: libcore-aar
           path: app/libs
 
+      - name: Compute Gradle cache key
+        id: gradle-key
+        run: |
+          git ls-files "*.gradle.kts" "gradle.properties" "gradle/wrapper/gradle-wrapper.properties" |
+            sort |
+            xargs sha256sum |
+            sha256sum |
+            awk '{ print "key=" $1 }' >> "$GITHUB_OUTPUT"
+
       - name: Gradle cache
         uses: actions/cache@v4
         with:
           path: ~/.gradle
-          key: gradle-android-ci-${{ runner.os }}-${{ hashFiles('**/*.gradle.kts', 'gradle.properties', 'gradle/wrapper/gradle-wrapper.properties') }}
+          key: gradle-android-ci-${{ runner.os }}-${{ steps.gradle-key.outputs.key }}
           restore-keys: |
             gradle-android-ci-${{ runner.os }}-
 
