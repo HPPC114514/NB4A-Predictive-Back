@@ -1,0 +1,186 @@
+name: Android CI
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/android-ci.yml"
+      - "**/*.gradle.kts"
+      - "gradle.properties"
+      - "gradle/**"
+      - "gradlew"
+      - "app/**"
+      - "buildScript/**"
+      - "buildSrc/**"
+      - "libcore/**"
+      - "docs/predictive-back-*.md"
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/android-ci.yml"
+      - "**/*.gradle.kts"
+      - "gradle.properties"
+      - "gradle/**"
+      - "gradlew"
+      - "app/**"
+      - "buildScript/**"
+      - "buildSrc/**"
+      - "libcore/**"
+      - "docs/predictive-back-*.md"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  ANDROID_PLATFORM: android-36
+  ANDROID_BUILD_TOOLS: 35.0.1
+  ANDROID_NDK_VERSION: 25.0.8775105
+
+jobs:
+  static-checks:
+    name: Static Checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify SDK levels
+        run: |
+          grep -q "compileSdk = 36" buildSrc/src/main/kotlin/Helpers.kt
+          grep -q "targetSdk = 36" buildSrc/src/main/kotlin/Helpers.kt
+          grep -q "minSdk = 21" buildSrc/src/main/kotlin/Helpers.kt
+
+      - name: Predictive back guardrails
+        run: |
+          if grep -R "OnBackInvokedCallback\|OnBackAnimationCallback\|android.window" app/src/main/java app/src/main/res; then
+            echo "Direct platform back API usage found. Keep predictive back AndroidX-first unless documented."
+            exit 1
+          fi
+
+          if grep -R "override fun onBackPressed" app/src/main/java | grep -v "ConfigurationFragment.kt"; then
+            echo "Unexpected Activity-level onBackPressed override found."
+            exit 1
+          fi
+
+      - name: Verify predictive back docs
+        run: |
+          test -f docs/predictive-back-handoff.md
+          test -f docs/predictive-back-progress.md
+
+  libcore:
+    name: Build LibCore
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ^1.25
+
+      - name: Install Android SDK packages
+        run: |
+          yes | sdkmanager --licenses >/dev/null
+          sdkmanager \
+            "platforms;${ANDROID_PLATFORM}" \
+            "build-tools;${ANDROID_BUILD_TOOLS}" \
+            "ndk;${ANDROID_NDK_VERSION}"
+
+      - name: LibCore cache
+        id: libcore-cache
+        uses: actions/cache@v4
+        with:
+          path: app/libs/libcore.aar
+          key: libcore-${{ runner.os }}-${{ hashFiles('.github/workflows/*', 'buildScript/**', 'libcore/**') }}
+
+      - name: Build LibCore
+        if: steps.libcore-cache.outputs.cache-hit != 'true'
+        run: |
+          chmod +x run
+          ./run lib core
+
+      - name: Upload LibCore
+        uses: actions/upload-artifact@v4
+        with:
+          name: libcore-aar
+          path: app/libs/libcore.aar
+          if-no-files-found: error
+
+  build:
+    name: Build arm64-v8a Debug APK
+    runs-on: ubuntu-latest
+    needs:
+      - static-checks
+      - libcore
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        run: |
+          yes | sdkmanager --licenses >/dev/null
+          sdkmanager \
+            "platforms;${ANDROID_PLATFORM}" \
+            "build-tools;${ANDROID_BUILD_TOOLS}" \
+            "ndk;${ANDROID_NDK_VERSION}"
+
+      - name: Download LibCore
+        uses: actions/download-artifact@v4
+        with:
+          name: libcore-aar
+          path: app/libs
+
+      - name: Gradle cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.gradle
+          key: gradle-android-ci-${{ runner.os }}-${{ hashFiles('**/*.gradle.kts', 'gradle.properties', 'gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: |
+            gradle-android-ci-${{ runner.os }}-
+
+      - name: Build APK
+        env:
+          BUILD_PLUGIN: none
+        run: |
+          echo "sdk.dir=${ANDROID_HOME}" > local.properties
+          echo "ndk.dir=${ANDROID_HOME}/ndk/${ANDROID_NDK_VERSION}" >> local.properties
+          chmod +x run gradlew
+          ./run init action gradle
+          ./gradlew --no-daemon --stacktrace app:assembleOssDebug
+
+      - name: Collect arm64-v8a APK
+        run: |
+          mkdir -p artifacts/arm64-v8a
+          find app/build/outputs/apk -name "*arm64-v8a*.apk" -exec cp {} artifacts/arm64-v8a/ \;
+          test -n "$(find artifacts/arm64-v8a -name "*.apk" -print -quit)"
+
+      - name: Upload arm64-v8a APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: arm64-v8a-debug-apk
+          path: artifacts/arm64-v8a/*.apk
+          if-no-files-found: error
