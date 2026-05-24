@@ -57,7 +57,7 @@ jobs:
 
       - name: Predictive back guardrails
         run: |
-          if grep -R "OnBackInvokedCallback\|OnBackAnimationCallback\|android.window" app/src/main/java app/src/main/res; then
+          if grep -R -F -e "OnBackInvokedCallback" -e "OnBackAnimationCallback" -e "android.window" app/src/main/java app/src/main/res; then
             echo "Direct platform back API usage found. Keep predictive back AndroidX-first unless documented."
             exit 1
           fi
