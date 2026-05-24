@@ -4,13 +4,13 @@ Last updated: 2026-05-24
 
 ## Current Phase
 
-Phase 3: cover dialogs, import flows, VPN permission handoff, temporary Activities, tools pages, and settings-related pages after the phase 1 main-shell baseline and phase 2 guarded editor migration.
+Post phase 3: the AndroidX-first predictive back code baseline is in place through main navigation, guarded editors, dialogs/import-adjacent transient Activities, VPN request handoff, tools pages, and settings-adjacent pages. Current work is verification and CI hardening, not more page migration by default.
 
 ## Task Goal
 
 - Continue from `docs/predictive-back-progress.md`.
-- Do not repeat phase 1 `MainActivity` work or phase 2 profile/config/group/route editor migration.
-- Review Dialog, import, VPN permission, temporary Activity, tools, and settings return behavior.
+- Do not repeat phase 1 `MainActivity` work, phase 2 editor migration, or phase 3 transient Activity cleanup unless testing exposes a regression.
+- Prefer verification, CI fixes, and targeted follow-up changes over more broad scanning.
 - Keep using AndroidX `OnBackPressedDispatcher` / `OnBackPressedCallback` where code changes are needed.
 - Do not add Android 16-only page-level callbacks.
 - Do not change protocol parsing, VPN/service startup, database schema, plugin behavior, subscription update logic, or proxy runtime behavior.
@@ -68,6 +68,22 @@ Phase 3: cover dialogs, import flows, VPN permission handoff, temporary Activiti
 - `docs/predictive-back-progress.md`
   - Updated page/module progress statuses.
 
+### Post Phase 3 Infrastructure Files Modified
+
+- `buildSrc/src/main/kotlin/Helpers.kt`
+  - `compileSdk` and `targetSdk` were raised from 35 to 36.
+  - `minSdk` remains 21.
+  - `buildToolsVersion` remains `35.0.1`.
+- `.github/workflows/android-ci.yml`
+  - Added a dedicated Android CI workflow for this fork.
+  - Runs static predictive-back guardrails.
+  - Builds and caches `app/libs/libcore.aar`.
+  - Installs Android platform 36, build tools 35.0.1, and NDK 25.0.8775105.
+  - Builds `app:assembleOssDebug`.
+  - Uploads the `arm64-v8a` debug APK as `arm64-v8a-debug-apk`.
+  - Fixed a guardrail false positive by using fixed-string grep for `OnBackInvokedCallback`, `OnBackAnimationCallback`, and `android.window`.
+  - Replaced GitHub Actions `hashFiles()` cache expressions with shell-computed SHA-256 keys after the workflow template rejected the directory glob expression.
+
 ## Files Checked But Not Modified
 
 - `app/src/main/AndroidManifest.xml`
@@ -103,6 +119,7 @@ Phase 3: cover dialogs, import flows, VPN permission handoff, temporary Activiti
 - No direct platform `OnBackInvokedCallback`, `OnBackAnimationCallback`, or Android 16-only page-level implementation was added.
 - Dialogs and external system pickers are left to AppCompat/Dialog/activity-result behavior so a cancelled predictive gesture does not commit import, delete, reset, VPN, or service-start work early.
 - Transient Activities that already finished on back now express that behavior through AndroidX where they are AppCompat/ComponentActivity based.
+- Build and artifact verification should prefer GitHub Actions because this repository needs `libcore.aar`, Android SDK/NDK, Go/gomobile, and sing-box assets before Android Studio can compile cleanly.
 
 ## Completed Back Behavior
 
@@ -127,13 +144,18 @@ Phase 3: cover dialogs, import flows, VPN permission handoff, temporary Activiti
 - `BlankActivity` still immediately finishes after optional crash-log forwarding and does not use AndroidX.
 - Dialogs, import flows, VPN permission handoff, scanner permission flow, and toolbar up flows were not gesture-tested on a device/emulator.
 - No Android emulator predictive-back gesture verification has been performed yet.
-- Debug build verification did not reach Kotlin/Android compilation because Gradle setup/cache handling failed before app tasks started.
+- Local Windows build attempts failed or were blocked by missing Android SDK/Go/libcore setup. This is an environment issue, not evidence of a Kotlin source regression.
+- The new `Android CI` workflow should be used as the primary build gate. If it fails, inspect the failing job log first and keep fixes scoped to the workflow or build environment unless the log clearly identifies a source issue.
 
 ## Next Round Starting Point
 
 Start with verification rather than more migration:
 
-- Retry a debug build from a clean terminal/Gradle state. This workspace can use Android Studio's JBR at `C:\Progra~1\Android\ANDROI~1\jbr`; the failed phase 3 attempts are listed below.
+- Run GitHub Actions `Android CI` on `main`.
+  - Expected static checks: SDK level checks pass, predictive-back guardrails pass, docs exist.
+  - Expected build output: artifact named `arm64-v8a-debug-apk`.
+  - If `LibCore cache` or `Gradle cache` fails again, fix the workflow cache key or cache path only; do not change app behavior to work around CI.
+- Install the artifact on an Android 13+ device/emulator, preferably Android 16/API 36 for predictive animation review.
 - Device/emulator test phase 1, 2, and 3 paths:
   - main drawer/search/navigation;
   - dirty and clean profile/config/group/route editors;
@@ -150,11 +172,13 @@ Only after verification, consider whether background shortcut Activities or `Bla
 
 - Do not redo the `MainActivity` drawer/configuration baseline unless a test exposes a regression.
 - Do not redo the phase 2 editor dirty-state migration unless a test exposes a regression.
+- Do not redo the phase 3 transient Activity conversion unless a test exposes a regression.
 - Do not treat `android:enableOnBackInvokedCallback="true"` as completed predictive back support.
 - Do not introduce Android 16-only callbacks as the default implementation.
 - Do not copy page-level back logic separately for Android 13, 14, 15, and 16.
 - Do not remove unsaved-change, delete, import, VPN permission, plugin, or subscription confirmation flows.
 - Do not modify protocol parsing, VPN/service startup, database schema, plugin communication, subscription update, or proxy runtime logic for predictive back cleanup.
+- Do not try to make local Windows Android Studio builds work by committing generated `app/libs/libcore.aar`, generated assets, Gradle caches, or local SDK paths.
 
 ## Build And Check Results
 
@@ -169,3 +193,11 @@ Only after verification, consider whether background shortcut Activities or `Bla
 - `set GRADLE_USER_HOME=%CD%\.gradle\home && gradlew.bat :app:assembleDebug`: Gradle 8.10.2 downloaded into the workspace cache and started a daemon, then stayed silent in configuration/dependency resolution for several minutes. The stuck build command tree was terminated. This did not produce Kotlin or Android compile diagnostics.
 - `gradlew.bat --stop` with the workspace Gradle home also stopped at `Stopping Daemon(s)` and did not exit promptly.
 - No feature or source behavior was removed to work around build environment failures.
+- SDK 36 update:
+  - `compileSdk = 36`.
+  - `targetSdk = 36`.
+  - `minSdk = 21`.
+- `Android CI` workflow status history:
+  - Initial static guardrail had a false positive on `android:windowNoTitle` because `android.window` was treated as a regex. Fixed by using `grep -F`.
+  - Initial cache key used `hashFiles('.github/workflows/*', 'buildScript/**', 'libcore/**')` and failed workflow template validation. Fixed by computing cache keys in shell and passing them through step outputs.
+  - After the cache-key fix, the workflow needs to be run again on GitHub to confirm `libcore` and APK artifact generation.
