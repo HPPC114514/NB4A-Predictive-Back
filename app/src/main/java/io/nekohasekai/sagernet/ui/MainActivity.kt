@@ -11,8 +11,8 @@ import android.os.RemoteException
 import android.view.KeyEvent
 import android.view.MenuItem
 import android.view.View
+import androidx.activity.BackEventCompat
 import androidx.activity.OnBackPressedCallback
-import androidx.activity.addCallback
 import androidx.annotation.IdRes
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -63,6 +63,15 @@ class MainActivity : ThemedActivity(),
     lateinit var navigation: NavigationView
     private lateinit var mainBackCallback: OnBackPressedCallback
     private lateinit var drawerBackCallback: OnBackPressedCallback
+    private var activeBackAnimationTarget = BackAnimationTarget.NONE
+
+    private enum class BackAnimationTarget {
+        NONE,
+        SUPPRESSED,
+        DRAWER,
+        MAIN_FALLBACK,
+        TASK_TO_BACK,
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -127,13 +136,66 @@ class MainActivity : ThemedActivity(),
     }
 
     private fun registerBackCallbacks() {
-        mainBackCallback = onBackPressedDispatcher.addCallback(this) {
-            handleMainBackPressed()
+        mainBackCallback = object : OnBackPressedCallback(true) {
+            override fun handleOnBackStarted(backEvent: BackEventCompat) {
+                startMainShellBackAnimation()
+            }
+
+            override fun handleOnBackProgressed(backEvent: BackEventCompat) {
+                progressMainShellBackAnimation(backEvent.progress)
+            }
+
+            override fun handleOnBackCancelled() {
+                cancelMainShellBackAnimation()
+            }
+
+            override fun handleOnBackPressed() {
+                val animationTarget = activeBackAnimationTarget
+                if (animationTarget == BackAnimationTarget.MAIN_FALLBACK ||
+                    animationTarget == BackAnimationTarget.TASK_TO_BACK
+                ) {
+                    applyMainShellBackProgress(1f)
+                }
+
+                handleMainBackPressed()
+
+                if (animationTarget == BackAnimationTarget.TASK_TO_BACK) {
+                    binding.coordinator.post { resetMainShellBackAnimation(false) }
+                } else {
+                    resetMainShellBackAnimation(false)
+                }
+                activeBackAnimationTarget = BackAnimationTarget.NONE
+            }
         }
-        drawerBackCallback = onBackPressedDispatcher.addCallback(this, false) {
-            binding.drawerLayout.closeDrawer(GravityCompat.START)
-            updateBackCallbacks()
+        onBackPressedDispatcher.addCallback(this, mainBackCallback)
+
+        drawerBackCallback = object : OnBackPressedCallback(false) {
+            override fun handleOnBackStarted(backEvent: BackEventCompat) {
+                activeBackAnimationTarget = BackAnimationTarget.DRAWER
+                applyDrawerBackProgress(backEvent.progress)
+            }
+
+            override fun handleOnBackProgressed(backEvent: BackEventCompat) {
+                if (activeBackAnimationTarget != BackAnimationTarget.DRAWER) {
+                    activeBackAnimationTarget = BackAnimationTarget.DRAWER
+                }
+                applyDrawerBackProgress(backEvent.progress)
+            }
+
+            override fun handleOnBackCancelled() {
+                cancelDrawerBackAnimation()
+            }
+
+            override fun handleOnBackPressed() {
+                applyDrawerBackProgress(1f)
+                binding.drawerLayout.closeDrawer(GravityCompat.START, false)
+                resetDrawerBackAnimation(false)
+                activeBackAnimationTarget = BackAnimationTarget.NONE
+                updateBackCallbacks()
+            }
         }
+        onBackPressedDispatcher.addCallback(this, drawerBackCallback)
+
         binding.drawerLayout.addDrawerListener(object : DrawerLayout.SimpleDrawerListener() {
             override fun onDrawerSlide(drawerView: View, slideOffset: Float) {
                 updateBackCallbacks()
@@ -150,6 +212,114 @@ class MainActivity : ThemedActivity(),
         updateBackCallbacks()
     }
 
+    private fun currentToolbarFragment() =
+        supportFragmentManager.findFragmentById(R.id.fragment_holder) as? ToolbarFragment
+
+    private fun resolveMainBackAnimationTarget(): BackAnimationTarget {
+        val fragment = currentToolbarFragment() ?: return BackAnimationTarget.NONE
+        return when {
+            fragment is ConfigurationFragment && fragment.hasActiveSearchBackState() ->
+                BackAnimationTarget.NONE
+            fragment is ConfigurationFragment -> BackAnimationTarget.TASK_TO_BACK
+            else -> BackAnimationTarget.MAIN_FALLBACK
+        }
+    }
+
+    private fun startMainShellBackAnimation() {
+        activeBackAnimationTarget = resolveMainBackAnimationTarget()
+        if (activeBackAnimationTarget == BackAnimationTarget.NONE) {
+            activeBackAnimationTarget = BackAnimationTarget.SUPPRESSED
+        }
+
+        if (activeBackAnimationTarget != BackAnimationTarget.MAIN_FALLBACK &&
+            activeBackAnimationTarget != BackAnimationTarget.TASK_TO_BACK
+        ) {
+            return
+        }
+
+        binding.coordinator.animate().cancel()
+        binding.coordinator.pivotX = binding.coordinator.width / 2f
+        binding.coordinator.pivotY = binding.coordinator.height / 2f
+        applyMainShellBackProgress(0f)
+    }
+
+    private fun progressMainShellBackAnimation(progress: Float) {
+        if (activeBackAnimationTarget == BackAnimationTarget.NONE) {
+            activeBackAnimationTarget = resolveMainBackAnimationTarget()
+        }
+
+        if (activeBackAnimationTarget == BackAnimationTarget.MAIN_FALLBACK ||
+            activeBackAnimationTarget == BackAnimationTarget.TASK_TO_BACK
+        ) {
+            applyMainShellBackProgress(progress)
+        }
+    }
+
+    private fun applyMainShellBackProgress(progress: Float) {
+        val easedProgress = easeBackProgress(progress)
+        val scale = 1f - 0.04f * easedProgress
+        binding.coordinator.alpha = 1f - 0.18f * easedProgress
+        binding.coordinator.scaleX = scale
+        binding.coordinator.scaleY = scale
+    }
+
+    private fun cancelMainShellBackAnimation() {
+        resetMainShellBackAnimation(true)
+        activeBackAnimationTarget = BackAnimationTarget.NONE
+    }
+
+    private fun resetMainShellBackAnimation(animated: Boolean) {
+        binding.coordinator.animate().cancel()
+        if (animated) {
+            binding.coordinator.animate()
+                .alpha(1f)
+                .scaleX(1f)
+                .scaleY(1f)
+                .setDuration(120L)
+                .start()
+        } else {
+            binding.coordinator.alpha = 1f
+            binding.coordinator.scaleX = 1f
+            binding.coordinator.scaleY = 1f
+        }
+    }
+
+    private fun applyDrawerBackProgress(progress: Float) {
+        if (!::navigation.isInitialized || navigation.width <= 0) return
+
+        navigation.animate().cancel()
+        val closeDirection = if (binding.drawerLayout.layoutDirection == View.LAYOUT_DIRECTION_RTL) {
+            1f
+        } else {
+            -1f
+        }
+        navigation.translationX = closeDirection * navigation.width * easeBackProgress(progress)
+    }
+
+    private fun cancelDrawerBackAnimation() {
+        resetDrawerBackAnimation(true)
+        activeBackAnimationTarget = BackAnimationTarget.NONE
+    }
+
+    private fun resetDrawerBackAnimation(animated: Boolean) {
+        if (!::navigation.isInitialized) return
+
+        navigation.animate().cancel()
+        if (animated) {
+            navigation.animate()
+                .translationX(0f)
+                .setDuration(120L)
+                .start()
+        } else {
+            navigation.translationX = 0f
+        }
+    }
+
+    private fun easeBackProgress(progress: Float): Float {
+        val boundedProgress = progress.coerceIn(0f, 1f)
+        return boundedProgress * boundedProgress * (3f - 2f * boundedProgress)
+    }
+
     private fun updateBackCallbacks() {
         val drawerVisible = binding.drawerLayout.isDrawerVisible(GravityCompat.START)
         drawerBackCallback.isEnabled = drawerVisible
@@ -157,8 +327,7 @@ class MainActivity : ThemedActivity(),
     }
 
     private fun handleMainBackPressed() {
-        val fragment =
-            supportFragmentManager.findFragmentById(R.id.fragment_holder) as? ToolbarFragment
+        val fragment = currentToolbarFragment()
         if (fragment?.onBackPressed() == true) return
 
         if (fragment is ConfigurationFragment) {
@@ -514,8 +683,7 @@ class MainActivity : ThemedActivity(),
         if (super.onKeyDown(keyCode, event)) return true
         if (binding.drawerLayout.isOpen) return false
 
-        val fragment =
-            supportFragmentManager.findFragmentById(R.id.fragment_holder) as? ToolbarFragment
+        val fragment = currentToolbarFragment()
         return fragment != null && fragment.onKeyDown(keyCode, event)
     }
 

@@ -4,14 +4,14 @@ Last updated: 2026-05-30
 
 ## Current Phase
 
-Post phase 3 verification: the AndroidX-first predictive back code baseline is in place through main navigation, guarded editors, dialogs/import-adjacent transient Activities, VPN request handoff, tools pages, and settings-adjacent pages. Android 16 real-device verification has confirmed the main behavior paths below. Current work should move from more migration to targeted predictive animation adaptation for the main shell.
+Post phase 4 animation prototype: the AndroidX-first predictive back code baseline is in place through main navigation, guarded editors, dialogs/import-adjacent transient Activities, VPN request handoff, tools pages, and settings-adjacent pages. Android 16 real-device verification confirmed the main behavior paths before this phase. The main shell now has a first AndroidX progress-driven animation prototype for drawer close, non-configuration fallback to configuration, and configuration-to-home approximation. This still needs Android 16 device verification.
 
 ## Task Goal
 
 - Continue from `docs/predictive-back-progress.md`.
 - Do not repeat phase 1 `MainActivity` work, phase 2 editor migration, or phase 3 transient Activity cleanup unless testing exposes a regression.
 - Prefer verification, CI fixes, and targeted follow-up changes over more broad scanning.
-- Next animation work should focus on the main shell only: open drawer back animation, non-configuration page back to configuration, and configuration page back to launcher/home.
+- Current animation work is limited to the main shell only: open drawer back animation, non-configuration page back to configuration, and configuration page back to launcher/home.
 - Keep configuration search behavior unchanged for now: first back may hide the IME, and the next back collapses search/focus.
 - Keep using AndroidX `OnBackPressedDispatcher` / `OnBackPressedCallback` where code changes are needed.
 - Do not add Android 16-only page-level callbacks.
@@ -32,8 +32,10 @@ Post phase 3 verification: the AndroidX-first predictive back code baseline is i
 
 - `app/src/main/java/io/nekohasekai/sagernet/ui/MainActivity.kt`
   - Keeps AndroidX callbacks for drawer-first and main fallback navigation.
+  - Phase 4 adds AndroidX back progress/cancel handling for the main-shell animation prototype.
 - `app/src/main/java/io/nekohasekai/sagernet/ui/ConfigurationFragment.kt`
   - Keeps search collapse through `ToolbarFragment.onBackPressed()`.
+  - Phase 4 adds a non-mutating search-active helper so main-shell animation stays suppressed while search should consume back.
 
 ### Phase 2 Files Preserved
 
@@ -86,6 +88,22 @@ Post phase 3 verification: the AndroidX-first predictive back code baseline is i
   - Fixed a guardrail false positive by using fixed-string grep for `OnBackInvokedCallback`, `OnBackAnimationCallback`, and `android.window`.
   - Replaced GitHub Actions `hashFiles()` cache expressions with shell-computed SHA-256 keys after the workflow template rejected the directory glob expression.
 
+### Phase 4 Animation Prototype Files Modified
+
+- `app/src/main/java/io/nekohasekai/sagernet/ui/MainActivity.kt`
+  - Replaced lambda-only AndroidX back callbacks with explicit `OnBackPressedCallback` objects.
+  - Uses `BackEventCompat.progress` through AndroidX `handleOnBackStarted`, `handleOnBackProgressed`, and `handleOnBackCancelled`.
+  - Drawer back progress translates the active navigation drawer toward the start edge, restores it on cancel, and closes it without a second close animation on commit.
+  - Main fallback and task-to-home paths apply a shared subtle fade plus scale to the main coordinator during gesture progress.
+  - Configuration search active state suppresses the main-shell animation for that gesture so search and IME behavior remains unchanged.
+- `app/src/main/java/io/nekohasekai/sagernet/ui/ConfigurationFragment.kt`
+  - Added `hasActiveSearchBackState()` as a non-mutating state query used by `MainActivity`.
+  - `onBackPressed()` now reuses the helper but preserves the existing search collapse behavior.
+- `docs/predictive-back-handoff.md`
+  - Updated for phase 4 implementation status, risks, and verification needs.
+- `docs/predictive-back-progress.md`
+  - Updated main-shell rows from planned to implemented/pending verification.
+
 ## Files Checked But Not Modified
 
 - `app/src/main/AndroidManifest.xml`
@@ -124,13 +142,15 @@ Post phase 3 verification: the AndroidX-first predictive back code baseline is i
 - Build and artifact verification should prefer GitHub Actions because this repository needs `libcore.aar`, Android SDK/NDK, Go/gomobile, and sing-box assets before Android Studio can compile cleanly.
 - The app already depends on `androidx.activity:activity-ktx:1.10.1`, so the next phase can evaluate AndroidX predictive back progress callbacks before considering any platform API. Keep any progress-animation code centralized in `MainActivity` or a small main-shell helper rather than duplicating page logic.
 - Prefer one shared in-app transition style for main-shell fallback paths. A subtle fade plus scale is safer than a right-exit slide because these destinations are not true stack pops and the current main fragments are replaced centrally.
+- Phase 4 uses only AndroidX `BackEventCompat` progress callbacks. It does not add direct `OnBackInvokedCallback`, `OnBackAnimationCallback`, or `android.window` usage.
+- The configuration-to-home animation remains an in-app approximation before `moveTaskToBack(true)`, not a true system launcher/home preview.
 
 ## Completed Back Behavior
 
-- Drawer visible: back closes the drawer first. Android 16 real-device verification passed, but no predictive drawer-close animation is present yet.
+- Drawer visible: back closes the drawer first. Phase 4 adds a progress-driven drawer translation prototype; Android 16 verification is pending.
 - Configuration search active or expanded: Android 16 real-device verification showed first back hides the IME when typing, and the next back collapses search/focus. This is accepted behavior and should not be changed by default.
-- Current main fragment is not `ConfigurationFragment`: back switches to `ConfigurationFragment`. Android 16 real-device verification passed, but no predictive transition animation is present yet.
-- Current main fragment is `ConfigurationFragment` with no active search: back calls `moveTaskToBack(true)`. Android 16 real-device verification reaches the launcher/home, but no predictive back-to-home animation is present yet.
+- Current main fragment is not `ConfigurationFragment`: back switches to `ConfigurationFragment`. Phase 4 adds a shared fade/scale progress animation; Android 16 verification is pending.
+- Current main fragment is `ConfigurationFragment` with no active search: back calls `moveTaskToBack(true)`. Phase 4 adds a shared fade/scale progress approximation before moving the task to background; Android 16 verification is pending.
 - Profile protocol editors: unsaved system back shows the existing save/discard/cancel dialog; clean system back falls through to the default Activity behavior.
 - Chain profile editor: reorder/remove/add marks profile dirty through the shared helper so unsaved system back remains guarded.
 - Custom JSON/config editor: unsaved system back shows the existing save/discard/cancel dialog; save still runs JSON formatting/validation first.
@@ -152,31 +172,35 @@ Verified on a real Android 16 device with predictive back animations enabled:
 - Configuration page ordinary back: moves the task to launcher/home successfully; animation adaptation remains.
 - Profile, group, route, and config editors with unsaved changes: existing save/discard/cancel dialog appears successfully.
 
+Phase 4 implementation has not yet been verified on device. Re-test the same paths and confirm whether the new animations track the gesture, cancel cleanly, and leave no stuck alpha/scale/translation after returning to the app.
+
 ## Unfinished Pages And Risks
 
 - Background shortcut Activities still extend plain `android.app.Activity`; converting them to AndroidX would be a broader lifecycle/runtime change in the background process and was left for a focused pass only if needed.
 - `BlankActivity` still immediately finishes after optional crash-log forwarding and does not use AndroidX.
 - Dialogs, import flows, VPN permission handoff, scanner permission flow, and toolbar up flows still need deeper gesture verification beyond the main paths listed above.
 - No Android emulator predictive-back gesture verification has been performed yet; current verification evidence is from a real Android 16 device.
-- Drawer predictive animation is feasible but medium risk: `DrawerLayout` already owns drawer state and scrim behavior, so progress-driven animation must avoid desynchronizing `DrawerLayout` internals. Prefer a small prototype driven by AndroidX back progress callbacks.
-- Non-configuration-to-configuration animation is feasible with moderate scope: `MainActivity` can centralize a fade/scale transition, but predictive progress needs both the outgoing fragment view and configuration destination available during the gesture.
-- Configuration-to-home animation is the hardest item: current behavior consumes back and calls `moveTaskToBack(true)`, which prevents the system back-to-home preview. A custom fade/scale before `moveTaskToBack(true)` is feasible, but true system home preview may require letting the system handle the terminal back path or accepting a behavior change from move-to-back to finish.
+- Drawer predictive animation is medium risk: the prototype translates only the active `NavigationView`, while `DrawerLayout` still owns drawer state and scrim. Verify cancel/commit carefully for visual desync.
+- Non-configuration-to-configuration animation is moderate risk: the prototype animates the outgoing main coordinator and swaps to configuration on commit. It does not pre-render the configuration destination during progress.
+- Configuration-to-home animation is the hardest item: the prototype preserves `moveTaskToBack(true)`, so it is an in-app fade/scale approximation rather than true system home preview.
 - Local Windows build attempts failed or were blocked by missing Android SDK/Go/libcore setup. This is an environment issue, not evidence of a Kotlin source regression.
 - The new `Android CI` workflow should be used as the primary build gate. If it fails, inspect the failing job log first and keep fixes scoped to the workflow or build environment unless the log clearly identifies a source issue.
 
 ## Next Round Starting Point
 
-Start with a targeted animation prototype rather than more page migration:
+Start with Android 16 verification of the phase 4 animation prototype:
 
 - Run GitHub Actions `Android CI` on `main`.
   - Expected static checks: SDK level checks pass, predictive-back guardrails pass, docs exist.
   - Expected build output: artifact named `arm64-v8a-debug-apk`.
   - If `LibCore cache` or `Gradle cache` fails again, fix the workflow cache key or cache path only; do not change app behavior to work around CI.
-- Prototype AndroidX progress-driven animation in `MainActivity` only.
-  - Drawer open: animate toward the closed drawer position during back progress, restore open state on cancel, close on commit.
-  - Non-configuration page: keep configuration as the semantic destination and use fade plus slight scale, not a right-exit slide.
-  - Configuration page to launcher/home: first decide whether preserving `moveTaskToBack(true)` is mandatory. If yes, implement only an in-app approximation before move-to-back. If true system home preview is mandatory, evaluate the behavior impact of letting the default terminal back path run.
-- Re-test Android 16 real-device paths after each prototype and record whether animation is predictive during gesture, not only after release.
+- Re-test Android 16 real-device paths:
+  - drawer open: gesture should visually move drawer toward closed, cancel should restore it, commit should close it without leaving translation;
+  - configuration search with keyboard: keep the accepted first-back IME behavior and ensure main-shell fade/scale does not run for search collapse;
+  - non-configuration page: gesture should fade/scale the main shell and commit to configuration;
+  - configuration ordinary back: gesture should fade/scale the main shell and commit to launcher/home through `moveTaskToBack(true)`;
+  - after returning from launcher/home, app alpha/scale should be reset.
+- If true system home preview becomes mandatory, evaluate replacing the terminal `moveTaskToBack(true)` path separately and document the behavior tradeoff before changing it.
 
 Only after the main-shell animation phase, consider whether background shortcut Activities or `BlankActivity` need an AndroidX wrapper.
 
@@ -222,3 +246,10 @@ Only after the main-shell animation phase, consider whether background shortcut 
   - `git diff --check`: passed.
   - Static docs inspection found no trailing whitespace.
   - Predictive-back keyword scan found only documented references; no app source files were changed.
+- 2026-05-30 phase 4 implementation checks:
+  - `git diff --check -- app/src/main/java/io/nekohasekai/sagernet/ui/MainActivity.kt app/src/main/java/io/nekohasekai/sagernet/ui/ConfigurationFragment.kt docs/predictive-back-handoff.md docs/predictive-back-progress.md`: passed.
+  - `git grep -n -F -e OnBackInvokedCallback -e OnBackAnimationCallback -e android.window -- app/src/main/java app/src/main/res`: no matches.
+  - `git grep -n 'override fun onBackPressed' -- app/src/main/java`: only `ConfigurationFragment.kt`, the existing fragment hook.
+  - Trailing-whitespace scan on edited code/docs files found no matches.
+  - `gradlew.bat --version`: not run successfully because `JAVA_HOME` was not set and `java` was not on `PATH`.
+  - Android 16 device verification for the new animations is still pending.

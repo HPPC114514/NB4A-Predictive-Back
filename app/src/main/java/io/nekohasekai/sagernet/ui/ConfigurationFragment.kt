@@ -1739,10 +1739,15 @@ class ConfigurationFragment @JvmOverloads constructor(
         searchView.clearFocus()
     }
 
-    override fun onBackPressed(): Boolean {
+    fun hasActiveSearchBackState(): Boolean {
         val searchView = searchView ?: return false
-        if (searchView.isIconified && !searchView.hasFocus() && searchView.query.isEmpty()) return false
+        return !searchView.isIconified || searchView.hasFocus() || searchView.query.isNotEmpty()
+    }
 
+    override fun onBackPressed(): Boolean {
+        if (!hasActiveSearchBackState()) return false
+
+        val searchView = searchView ?: return false
         cancelSearch(searchView)
         return true
     }
